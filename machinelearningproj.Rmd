@@ -1,0 +1,109 @@
+---
+title: "Regression Models Course Project"
+author: "Phil Bagienski"
+date: "August 2, 2017"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+#Overview
+The goal of this project is the predict the manner in which a group of 6 participants performed barbell lifts correctly and incorrectly in 5 different ways. The data comes from accelerometers on the belt, forearm, arm, and dumbell from this source: http://groupware.les.inf.puc-rio.br/har. I will be applying machine learning techniques to build a prediction model and use it to predict 20 different test cases. In particular, I will use a random forest model.
+
+
+
+#Loading the data
+First let's load up the data and take a general glance at it. Make sure the testing and training sets have been downloaded to the desired working directory.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#loading necessary libraries for later
+library(caret)
+library(randomForest)
+
+#set seed for reproducibility
+set.seed(123)
+```
+```{r, echo=TRUE}
+#read CSV files
+train <- read.csv("pml-training.csv", header=T,sep=",",na.strings=c("NA",""))
+test <- read.csv("pml-testing.csv", header=T,sep=",",na.strings=c("NA",""))
+
+#look at dimensions
+dim(train)
+dim(test)
+
+```
+
+#Data Cleaning
+We now know that there are quite a bit of columns, ie possible predictors, for our exploration. By using head() or names() to look at the data, clearly some are irrelevant to our model (ie, ID), so let's first remove them. In particular, the first seven column names do not appear to be relevant for both datasets.
+
+```{r, echo=TRUE}
+##subset only potentially relevant predictors
+newTrain <- train[,8:160]
+newTest <- test[,8:160]
+
+```
+
+Now we have to account for the fact that many of these potential predictors have a lot of NA values. Since this could mess up our model, we will remove any columns with less than 60% data.
+
+```{r, echo=TRUE}
+#find number of columns with less than 60% data
+sum((colSums(!is.na(newTrain[,-ncol(newTrain)])) < 0.6*nrow(newTrain)))
+
+## 100 columns are missing a lot of data! Lets remove these.
+satisfactory <- c((colSums(!is.na(newTrain[,-ncol(newTrain)])) >= 0.6*nrow(newTrain)))
+
+newTrain <- newTrain[,satisfactory]
+newTest <- newTest[,satisfactory]
+
+dim(newTrain)
+dim(newTest)
+
+```
+
+We have reduced our predictors from 160 down to 53. This should be good enough to proceed to modeling.
+
+#Model Building
+Now we are ready to model. First lets create a partition within our training set so that we have data set aside for validation. We will allow 60% data to be used as creating our model and 40% for validation.
+
+```{r, echo=TRUE}
+inTrain = createDataPartition(newTrain$classe, p=0.60, list=F)
+training = newTrain[inTrain,]
+validating = newTrain[-inTrain,]
+```
+
+Good, now we can create our model using the randomForest function. In this situation, classe will be our dependent value which we are trying to predict.
+
+
+
+```{r, echo=TRUE}
+#this may take awhile
+model <- randomForest(classe~.,data=training)
+model
+```
+
+#Validating the model
+
+Almost done. Now lets see how our model performs on the validation data we set aside from the partition!
+```{r, echo=TRUE}
+confusionMatrix(predict(model,newdata=validating[,-ncol(validating)]),validating$classe)
+```
+Looks pretty good. Finally, we can use the accuracy from this to estimate the out of sample error rate.
+```{r, echo=TRUE}
+accuracy<-c(as.numeric(predict(model,newdata=validating[,-ncol(validating)])==validating$classe))
+accpercent<-sum(accuracy)*100/nrow(validating)
+error<-100-accpercent
+error
+```
+Our estimated out of sample error rate is approx. .56%
+
+#Testing on Test set
+To conclude I shall run the model on the test set to (hopefully) get the right classifications for the given test set. We already transformed it in align with the training set's dimensions, so this should be pretty easy.
+
+```{r, echo=TRUE}
+predictions<-predict(model,newdata=newTest)
+predictions
+```
+
+#Conclusion
+I consider this project a success in that the random forest model was quite accurate in the validation set. Some things that could improve the model could be: removing all columns with near zero variance and removing all columns which have a high correlation to other variables. This model accurately predicted the 20 cases in the prediction quiz.
